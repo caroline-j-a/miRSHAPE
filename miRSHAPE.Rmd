@@ -1,0 +1,90 @@
+---
+title: "SHAPE Reactivity in miR Binding Sites"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(tidyverse)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(ggsignif)
+library(readxl)
+```
+
+
+```{r}
+#Loading SHAPE reactivity data (.map file from ShapeMapper)
+#***IMPORTANT*** In .map file, create a new top row to name the columns. Name first column Nucleo_Num, second column SHAPE_Reactivity, and fourth column Nucleotide. Third column does not need to be named.
+#Edit FilePathway to the pathway to the .map file in your computer
+SHAPE <- read_excel("FilePathway")
+
+SHAPE
+```
+
+```{r}
+#Labeling miR binding sites
+#Example below is for miR7 binding sites (sequence = UCUUCC)
+#Edit nucleotide sequence to reflect binding site for your miR of interest
+filter_miR_SHAPE <- SHAPE %>% 
+  mutate(site = cumsum(ifelse(Nucleotide == "U" & 
+                                lead(Nucleotide, 1) == "C" & 
+                                lead(Nucleotide, 2) == "U" &
+                                lead(Nucleotide, 3) == "U" &
+                                lead(Nucleotide, 4) == "C" &
+                                lead(Nucleotide, 5) == "C", 1, 0))) %>% 
+  filter(site != 0) %>% 
+  group_by(site) %>% 
+  #Edit slice as needed based on sequence length of miR binding site
+  #slice(1L:sequencelengthL)
+  slice(1L:6L)
+pre_miR_SHAPE <- inner_join(SHAPE, filter_miR_SHAPE)
+
+miR_SHAPE <- 
+  pre_miR_SHAPE %>% 
+  mutate(miR = TRUE)
+```
+
+```{r}
+#Labeling non-miR sites
+pre_no_miR_SHAPE <- anti_join(SHAPE, pre_miR_SHAPE, by = c("Nucleo_Num"))
+
+no_miR_SHAPE <-
+  pre_no_miR_SHAPE %>% 
+  mutate(miR = FALSE)
+no_miR_SHAPE
+```
+
+```{r}
+#Compiling labeled SHAPE data
+pre_SHAPE_filtered <-
+  full_join(miR_SHAPE, no_miR_SHAPE)
+
+SHAPE_filtered <- arrange(pre_SHAPE_filtered, Nucleo_Num)
+SHAPE_filtered
+```
+
+```{r}
+#Generating violin plots
+SHAPE_filtered_plot <- ggplot(SHAPE_filtered, aes(x=miR, y=SHAPE_Reactivity)) +
+  geom_violin() +
+  labs(y="SHAPE Reactivity") +
+  scale_x_discrete(breaks=c("FALSE","TRUE"), 
+                   labels=c("non-miR Binding Sites", "miR Binding Sites")) +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=11, color = "black"), plot.title = element_text(hjust = 0.5)) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0, ymax = 0.4, alpha = 0.3, fill = "black") +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.4, ymax = 0.85, alpha = 0.3, fill = "orange") +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.85, ymax = 4, alpha = 0.3, fill = "red")
+
+SHAPE_filtered_plot_sig <- SHAPE_filtered_plot + geom_signif(comparisons = list(c("FALSE", "TRUE")), test = "t.test", map_signif_level = TRUE) 
+SHAPE_filtered_plot_sig
+
+miR_SHAPE_plot <- SHAPE_filtered_plot_sig
+
+ggsave("miR_SHAPE_plot.pdf")
+```
+
+
+
+
